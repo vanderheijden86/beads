@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"strings"
 	"testing"
 	"time"
 )
@@ -12,6 +13,54 @@ import (
 // errStopList is the sentinel a List callback returns to check that List
 // stops walking on the first error instead of collecting every blob first.
 var errStopList = errors.New("stop listing")
+
+// prefixed wraps s so every key gets segment prepended, giving a contract
+// run against a shared, persistent bucket its own disposable namespace
+// without ever emptying the bucket between runs.
+type prefixedStore struct {
+	Store
+	segment string
+}
+
+func prefixed(s Store, segment string) Store {
+	return &prefixedStore{Store: s, segment: segment}
+}
+
+func (p *prefixedStore) full(key string) string {
+	return p.segment + "/" + key
+}
+
+func (p *prefixedStore) Put(ctx context.Context, key string, r io.Reader, size int64, mimeType string) error {
+	return p.Store.Put(ctx, p.full(key), r, size, mimeType)
+}
+
+func (p *prefixedStore) Open(ctx context.Context, key string) (io.ReadCloser, error) {
+	return p.Store.Open(ctx, p.full(key))
+}
+
+func (p *prefixedStore) Stat(ctx context.Context, key string) (Info, error) {
+	info, err := p.Store.Stat(ctx, p.full(key))
+	if err != nil {
+		return Info{}, err
+	}
+	info.Key = strings.TrimPrefix(info.Key, p.segment+"/")
+	return info, nil
+}
+
+func (p *prefixedStore) Delete(ctx context.Context, key string) error {
+	return p.Store.Delete(ctx, p.full(key))
+}
+
+func (p *prefixedStore) List(ctx context.Context, prefix string, fn func(Info) error) error {
+	return p.Store.List(ctx, p.full(prefix), func(i Info) error {
+		i.Key = strings.TrimPrefix(i.Key, p.segment+"/")
+		return fn(i)
+	})
+}
+
+func (p *prefixedStore) URL(ctx context.Context, key string, ttl time.Duration, filename string) (string, error) {
+	return p.Store.URL(ctx, p.full(key), ttl, filename)
+}
 
 // runContract checks the behaviour bd attachment relies on. Each backend's test
 // calls it with a fresh, empty store.

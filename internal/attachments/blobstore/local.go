@@ -293,10 +293,12 @@ func evalExistingPrefix(path string) (string, error) {
 }
 
 // cleanRelPath rejects a key that is not a clean relative path: an absolute
-// path, an empty segment or a ".." segment would let a caller escape root or
-// collide with an unrelated file. gc and List pass keys read back from a
-// blob's own metadata through this same check, since a blob_key can arrive
-// over a Dolt pull from another party.
+// path, an empty segment, a ".." segment, a backslash or a control character
+// would let a caller escape root, collide with an unrelated file, or parse
+// differently on Windows than on the platform that wrote it. Both Local and
+// the S3 backend call this same check for every method that takes a key,
+// since a blob_key is untrusted: it can arrive over a Dolt pull from another
+// party.
 func cleanRelPath(key string) (string, error) {
 	key = strings.TrimSpace(key)
 	if key == "" {
@@ -305,8 +307,18 @@ func cleanRelPath(key string) (string, error) {
 	if filepath.IsAbs(key) || strings.HasPrefix(key, "/") {
 		return "", fmt.Errorf("blob key %q must be relative", key)
 	}
-	parts := strings.FieldsFunc(key, func(r rune) bool { return r == '/' || r == '\\' })
-	for _, part := range parts {
+	if strings.ContainsRune(key, '\\') {
+		return "", fmt.Errorf("blob key %q must not contain a backslash", key)
+	}
+	for _, r := range key {
+		if r < 0x20 || r == 0x7f {
+			return "", fmt.Errorf("blob key %q contains a control character", key)
+		}
+	}
+	// strings.Split, not strings.FieldsFunc: FieldsFunc silently collapses a
+	// run of separators, which would let "a//b" slip past the empty-segment
+	// check below instead of being rejected by it.
+	for _, part := range strings.Split(key, "/") {
 		if part == "" || part == "." || part == ".." {
 			return "", fmt.Errorf("blob key %q is unsafe", key)
 		}

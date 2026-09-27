@@ -102,3 +102,46 @@ func TestLocalRejectsDanglingSymlinkAtBlobPath(t *testing.T) {
 		t.Fatalf("the dangling symlink was replaced instead of rejected: %v, %v", fi, err)
 	}
 }
+
+// TestCleanRelPathRejectsUnsafeKeys checks the check every blobstore backend
+// shares: none of these forms may reach the filesystem or an S3 key, since
+// a blob_key can arrive over a Dolt pull from another party.
+func TestCleanRelPathRejectsUnsafeKeys(t *testing.T) {
+	unsafe := []string{
+		"",
+		"   ",
+		"/abs/path",
+		"../escape",
+		"a/../../b",
+		"a/./b",
+		"a/",
+		"a//b",
+		"trailing/.",
+		"back\\slash",
+		"control\x00char",
+		"bell\x07char",
+		"delete\x7fchar",
+	}
+	for _, key := range unsafe {
+		if _, err := cleanRelPath(key); err == nil {
+			t.Errorf("cleanRelPath(%q) accepted an unsafe key", key)
+		}
+	}
+}
+
+func TestCleanRelPathAcceptsSafeKeys(t *testing.T) {
+	safe := map[string]string{
+		"ws/db/sha256/ab/abcdef0123": "ws/db/sha256/ab/abcdef0123",
+		"a":                          "a",
+	}
+	for key, want := range safe {
+		got, err := cleanRelPath(key)
+		if err != nil {
+			t.Errorf("cleanRelPath(%q) = %v, want nil error", key, err)
+			continue
+		}
+		if filepath.ToSlash(got) != want {
+			t.Errorf("cleanRelPath(%q) = %q, want %q", key, got, want)
+		}
+	}
+}
