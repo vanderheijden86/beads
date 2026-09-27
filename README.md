@@ -142,6 +142,11 @@ migrate between modes with `bd backup`; reclaim space with `bd prune` /
 Full detail — connection flags, sockets, maintenance, backup, and migration —
 in the [Dolt backend guide](docs/architecture/dolt.md).
 
+Attachment metadata syncs with the Dolt database, but attachment bytes are
+plain local files under `.beads/attachments`. See
+[docs/ATTACHMENTS.md](docs/ATTACHMENTS.md) before relying on sync or backup for
+attached files.
+
 ### Schema Version Guard
 
 `bd` checks the database schema version at open time. If the database has been

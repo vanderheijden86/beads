@@ -221,6 +221,23 @@ var showCmd = &cobra.Command{
 				fmt.Printf("\n%s %s\n", ui.RenderBold("LABELS:"), strings.Join(labels, ", "))
 			}
 
+			attachments, _ := issueStore.ListAttachments(ctx, issue.ID) // Best effort: show issue even if attachments unavailable
+			if len(attachments) > 0 {
+				fmt.Printf("\n%s\n", ui.RenderBold("ATTACHMENTS"))
+				for _, item := range attachmentListEntries(issueStore, attachments) {
+					missing := ""
+					if item.Missing {
+						missing = " " + ui.RenderMuted("(missing)")
+					}
+					fmt.Printf("  %s  %s  %s  %s%s\n",
+						item.ShortHash,
+						item.OriginalFilename,
+						item.MimeType,
+						item.Size,
+						missing)
+				}
+			}
+
 			// Show custom metadata (GH#1406)
 			if metaStr := formatIssueCustomMetadata(issue); metaStr != "" {
 				fmt.Printf("\n%s\n", metaStr)

@@ -354,6 +354,7 @@ database backup.
 - Data locations differ between modes: `.beads/embeddeddolt/` (embedded) vs `.beads/dolt/` (server)
 - The backup directory is a full Dolt backup, not an `issues.jsonl` export — it can be on a local drive, NAS, or DoltHub
 - You can also migrate via Dolt remotes (`bd dolt push` / `bd dolt pull`) if both projects share a remote
+- Attachment bytes under `.beads/attachments` are outside the Dolt database and need a separate filesystem backup
 
 The sections below are the canonical backend migration reference.
 

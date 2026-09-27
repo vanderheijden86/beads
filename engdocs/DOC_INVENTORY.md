@@ -18,7 +18,7 @@ freshness source.
 |---|---|---|
 | Architecture | `ARCHITECTURE.md`, `INTERNALS.md`, `DOLT.md`, `adr/`, `design/` | Durable structure, package boundaries, storage model, and invariants live here. |
 | Behaviour/reference | `CLI_REFERENCE.md`, `CONFIG.md`, `SETUP.md`, `JSON_SCHEMA.md`, `RECOVERY.md`, `ERROR_HANDLING.md`, `TROUBLESHOOTING.md` | CLI/config/runtime contracts live here and need generation or freshness review. |
-| User-facing workflow | `INSTALLING.md`, `QUICKSTART.md`, `FAQ.md`, `SYNC_SETUP.md`, integration guides, `WORKTREES.md`, `UNINSTALLING.md` | Task-oriented user docs live here; avoid duplicating implementation tables unless linked to reference docs. |
+| User-facing workflow | `INSTALLING.md`, `QUICKSTART.md`, `FAQ.md`, `SYNC_SETUP.md`, `ATTACHMENTS.md`, integration guides, `WORKTREES.md`, `UNINSTALLING.md` | Task-oriented user docs live here; avoid duplicating implementation tables unless linked to reference docs. |
 | Maintainer/operator | root `RELEASING.md`, `RELEASE-STABILITY-GATE.md`, `LINTING.md`, `SECURITY-DEPENDENCY-EXCEPTIONS.md`, `PERFORMANCE_TESTING.md`, `CI_TEST_SURFACE_AUDIT.md`, `CI_CLEANUP_PLAN.md`, `SERVE_RUNBOOK.md` | Maintainer process docs stay active only when tied to current scripts/checks. |
 | Historical/staged | `staged-for-removal/` | Resolved audits, stale duplicates, and unsupported snapshots are preserved here until deleted or rescued. |
 
@@ -33,6 +33,7 @@ freshness source.
 | `integrations/azure-devops.md` | `Last reviewed:` marker tied to `cmd/bd/ado*.go` and `internal/ado/`. (Mintlify port: was `ADO_CONFIG.md`.) |
 | `reference/json-schema.md` | `Last reviewed:` marker tied to `cmd/bd/output.go`, `cmd/bd/errors.go`, and protocol tests. (Mintlify port: was `JSON_SCHEMA.md`.) |
 | `recovery/init-safety.md` | `Last reviewed:` marker tied to `cmd/bd/init*.go` safety code and tests. (Mintlify port: was `RECOVERY.md`.) |
+| `ATTACHMENTS.md` | Policy assertions covered by `cmd/bd/attachment_policy_test.go`. |
 | `ERROR_HANDLING.md` | `Last reviewed:` marker tied to current command error exits and JSON error helpers. |
 | `LINTING.md` | `Last reviewed:` marker tied to `.golangci.yml`, `scripts/ci/pr-lint.sh`, the `Makefile` wrapper, and CI workflow wiring. |
 | `SERVE_RUNBOOK.md` | `Last reviewed:` marker tied to the operating-envelope constants in `internal/httpapi/server.go` and the log fields in its `event`/`request` emitters. |
@@ -56,6 +57,7 @@ Follow-up automation should replace marker-only checks with generated or
 | `AIDER_INTEGRATION.md` | Keep | User-facing integration guide; evidence is setup/integration behaviour. |
 | `ANTIVIRUS.md` | Keep | User-facing operational note; review vendor/version claims when touched. |
 | `ARCHITECTURE.md` | Keep | Primary architecture overview; evidence is current package layout and Dolt-only storage path. |
+| `ATTACHMENTS.md` | Keep with freshness | User-facing attachment storage/sync/backup policy; key claims are guarded by `cmd/bd/attachment_policy_test.go`. |
 | `ATTRIBUTION.md` | Keep | Attribution record for removed merge engine. |
 | `CLAUDE_INTEGRATION.md` | Keep | Design/user guide for Claude setup; paired with `SETUP.md`. |
 | `CLAUDE.md` | Revise | Kept as architecture orientation only; command/workflow duplication was reduced in favour of root `AGENTS.md` and `AGENT_INSTRUCTIONS.md`. |

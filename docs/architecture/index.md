@@ -188,6 +188,7 @@ See [Sync Failures Recovery](/recovery/sync-failures) for sync race condition tr
 ├── embeddeddolt/     # Dolt database (embedded mode, default) — gitignored
 ├── dolt/             # Dolt database (server mode) — gitignored
 ├── dolt-server.pid   # Server-mode runtime files (.pid, .log, .port) — gitignored
+├── attachments/      # Local attachment bytes; metadata lives in Dolt — gitignored
 ├── issues.jsonl      # Passive JSONL export for viewers and interchange
 ├── metadata.json     # Backend config — tracked in git
 └── config.yaml       # Project config (optional) — tracked in git

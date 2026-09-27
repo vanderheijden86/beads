@@ -421,6 +421,22 @@ var proxyCapabilityRegistry = []capabilityRow{
 	refusedPath("merge-slot acquire", "proxy.merge_slot.unsupported", ProxyReasonUnimplemented, trackLongTail),
 	refusedPath("merge-slot release", "proxy.merge_slot.unsupported", ProxyReasonUnimplemented, trackLongTail),
 
+	// --- attachments ----------------------------------------------------------
+	// The byte store is a local directory under .beads/attachments; a proxied
+	// workspace's client and the server it talks to are not guaranteed to share
+	// a filesystem, so streaming attachment bytes needs a route (upload/download
+	// RPCs) that does not exist yet. Metadata alone could be routed sooner, but
+	// splitting metadata from bytes per-command would let `attachment add`
+	// silently record a row for a file the server-side client can never read.
+	refusedPath("attachment", "proxy.attachment.unsupported", ProxyReasonUnimplemented, trackLongTail).
+		asParentGroup(),
+	refusedPath("attachment add", "proxy.attachment.unsupported", ProxyReasonUnimplemented, trackLongTail),
+	refusedPath("attachment list", "proxy.attachment.unsupported", ProxyReasonUnimplemented, trackLongTail),
+	refusedPath("attachment copy", "proxy.attachment.unsupported", ProxyReasonUnimplemented, trackLongTail),
+	refusedPath("attachment remove", "proxy.attachment.unsupported", ProxyReasonUnimplemented, trackLongTail),
+	refusedPath("attachment fsck", "proxy.attachment.unsupported", ProxyReasonUnimplemented, trackLongTail),
+	refusedPath("attachment prune", "proxy.attachment.unsupported", ProxyReasonUnimplemented, trackLongTail),
+
 	// --- transforms ---------------------------------------------------------
 	// ID rewrites walk every reference in the store. They need a routed
 	// multi-statement transaction, which the UOW can express; nobody has
