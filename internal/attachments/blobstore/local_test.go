@@ -121,6 +121,10 @@ func TestCleanRelPathRejectsUnsafeKeys(t *testing.T) {
 		"control\x00char",
 		"bell\x07char",
 		"delete\x7fchar",
+		" a/b",
+		"a/b ",
+		"a /b",
+		"a/b\t",
 	}
 	for _, key := range unsafe {
 		if _, err := cleanRelPath(key); err == nil {

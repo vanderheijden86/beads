@@ -193,6 +193,10 @@ func TestS3KeyRejectsUnsafeKeys(t *testing.T) {
 		"back\\slash",
 		"control\x00char",
 		"a//b",
+		" a/b",
+		"a/b ",
+		"a /b",
+		"a/b\t",
 	}
 
 	ctx := context.Background()

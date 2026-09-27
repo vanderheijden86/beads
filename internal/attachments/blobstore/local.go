@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // Local stores blobs as files under root, one file per key: a key's slashes
@@ -293,14 +294,15 @@ func evalExistingPrefix(path string) (string, error) {
 }
 
 // cleanRelPath rejects a key that is not a clean relative path: an absolute
-// path, an empty segment, a ".." segment, a backslash or a control character
-// would let a caller escape root, collide with an unrelated file, or parse
-// differently on Windows than on the platform that wrote it. Both Local and
-// the S3 backend call this same check for every method that takes a key,
-// since a blob_key is untrusted: it can arrive over a Dolt pull from another
-// party.
+// path, an empty segment, a ".." segment, a backslash, a control character or
+// whitespace would let a caller escape root, collide with an unrelated file,
+// parse differently on Windows than on the platform that wrote it, or alias
+// with a visually identical key that lacks the whitespace. Both Local and the
+// S3 backend call this same check for every method that takes a key, since a
+// blob_key is untrusted: it can arrive over a Dolt pull from another party,
+// and Key() itself never produces whitespace, so trimming it here would only
+// ever paper over a hostile or corrupted value.
 func cleanRelPath(key string) (string, error) {
-	key = strings.TrimSpace(key)
 	if key == "" {
 		return "", fmt.Errorf("blob key is empty")
 	}
@@ -313,6 +315,9 @@ func cleanRelPath(key string) (string, error) {
 	for _, r := range key {
 		if r < 0x20 || r == 0x7f {
 			return "", fmt.Errorf("blob key %q contains a control character", key)
+		}
+		if unicode.IsSpace(r) {
+			return "", fmt.Errorf("blob key %q contains whitespace", key)
 		}
 	}
 	// strings.Split, not strings.FieldsFunc: FieldsFunc silently collapses a
