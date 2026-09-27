@@ -9,6 +9,10 @@ import (
 	"time"
 )
 
+// errStopList is the sentinel a List callback returns to check that List
+// stops walking on the first error instead of collecting every blob first.
+var errStopList = errors.New("stop listing")
+
 // runContract checks the behaviour bd attachment relies on. Each backend's test
 // calls it with a fresh, empty store.
 func runContract(t *testing.T, s Store) {
@@ -46,6 +50,26 @@ func runContract(t *testing.T, s Store) {
 	if len(listed) != 1 || listed[0] != key {
 		t.Fatalf("List = %v", listed)
 	}
+
+	secondKey := "ws/db/sha256/cd/abcdef0456"
+	if err := s.Put(ctx, secondKey, bytes.NewReader(body), int64(len(body)), "text/plain"); err != nil {
+		t.Fatalf("Put second blob: %v", err)
+	}
+	calls := 0
+	err = s.List(ctx, "ws/db/", func(Info) error {
+		calls++
+		return errStopList
+	})
+	if !errors.Is(err, errStopList) {
+		t.Fatalf("List with a failing callback: err = %v, want errStopList", err)
+	}
+	if calls != 1 {
+		t.Fatalf("List called fn %d times after it returned an error, want 1", calls)
+	}
+	if err := s.Delete(ctx, secondKey); err != nil {
+		t.Fatal(err)
+	}
+
 	if u, err := s.URL(ctx, key, time.Minute, "hello.txt"); err != nil || u == "" {
 		t.Fatalf("URL = %q, %v", u, err)
 	}

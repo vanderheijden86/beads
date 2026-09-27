@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -11,6 +12,39 @@ import (
 
 func TestLocalStoreContract(t *testing.T) {
 	runContract(t, NewLocal(t.TempDir()))
+}
+
+// Put's idempotent short-circuit only fires on an exact size match; a blob
+// path already occupied by content of a different size is a real write, not
+// a retry, so Put must overwrite it rather than silently keeping the old
+// bytes.
+func TestLocalOverwritesDifferentSizeBlob(t *testing.T) {
+	root := t.TempDir()
+	key := "ws/db/sha256/ab/abcdef0123"
+	dir := filepath.Join(root, "ws", "db", "sha256", "ab")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stale := []byte("stale")
+	if err := os.WriteFile(filepath.Join(dir, "abcdef0123"), stale, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	s := NewLocal(root)
+	body := []byte("hello attachment")
+	if err := s.Put(context.Background(), key, bytes.NewReader(body), int64(len(body)), "text/plain"); err != nil {
+		t.Fatalf("Put over a different-size blob: %v", err)
+	}
+
+	rc, err := s.Open(context.Background(), key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := io.ReadAll(rc)
+	rc.Close()
+	if !bytes.Equal(got, body) {
+		t.Fatalf("Open after overwrite read %q, want %q", got, body)
+	}
 }
 
 // A symlink planted at the first path segment a key resolves to must not let
