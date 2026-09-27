@@ -824,6 +824,12 @@ var fkCascadeRepairDeletes = map[string]string{
 	"issue_snapshots":      `DELETE FROM issue_snapshots WHERE issue_id NOT IN (SELECT id FROM issues)`,
 	"compaction_snapshots": `DELETE FROM compaction_snapshots WHERE issue_id NOT IN (SELECT id FROM issues)`,
 	"child_counters":       `DELETE FROM child_counters WHERE parent_id NOT IN (SELECT id FROM issues)`,
+	"attachments":          `DELETE FROM attachments WHERE issue_id NOT IN (SELECT id FROM issues)`,
+	// wisp_dependencies.issue_id references wisps(id), not issues(id); only
+	// depends_on_issue_id (the split target column, populated when a wisp
+	// depends on a real issue rather than another wisp) references issues.
+	"wisp_dependencies": `DELETE FROM wisp_dependencies
+		WHERE depends_on_issue_id IS NOT NULL AND depends_on_issue_id NOT IN (SELECT id FROM issues)`,
 }
 
 // TryRepairFKCascadeViolations repairs the post-merge foreign-key constraint

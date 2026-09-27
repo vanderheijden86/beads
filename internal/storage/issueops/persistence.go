@@ -174,7 +174,7 @@ func rejectPersistenceDemotion(ctx context.Context, tx DBTX, id string) error {
 	for _, table := range []string{"issue_snapshots", "compaction_snapshots", "attachments"} {
 		var count int
 		if err := tx.QueryRowContext(ctx, fmt.Sprintf(`SELECT COUNT(*) FROM %s WHERE issue_id = ?`, table), id).Scan(&count); err != nil {
-			return fmt.Errorf("check retained snapshots in %s: %w", table, err)
+			return fmt.Errorf("count retained rows in %s: %w", table, err)
 		}
 		if count > 0 {
 			return fmt.Errorf("cannot demote issue %s: it has retained snapshots or attachments", id)
