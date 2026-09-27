@@ -38,7 +38,7 @@ ask bd for the bytes or for a short-lived presigned URL.
   - [Task A2: blobstore interface and key scheme](#task-a2-blobstore-interface-and-key-scheme)
   - [Task A3: local backend](#task-a3-local-backend)
   - [Task A4: s3 backend](#task-a4-s3-backend)
-  - [Task A5: migration 0068 stores a blob key, not a path](#task-a5-migration-0068-stores-a-blob-key-not-a-path)
+  - [Task A5: migration 0069 stores a blob key, not a path](#task-a5-migration-0069-stores-a-blob-key-not-a-path)
   - [Task A6: route bd attachment through the blob store](#task-a6-route-bd-attachment-through-the-blob-store)
   - [Task A7: get, url and gc verbs](#task-a7-get-url-and-gc-verbs)
   - [Task A8: refuse a local backend on a shared server](#task-a8-refuse-a-local-backend-on-a-shared-server)
@@ -251,8 +251,8 @@ git cherry-pick $(git rev-list --reverse origin/main..upstream-pr-4316 --no-merg
 Expect conflicts. The PR predates about 17 migrations. Resolve them as follows:
 
 - `0050_create_attachments.*.sql` collides with upstream's
-  `0050_dependencies_deterministic_id`. Rename to `0068_create_attachments.*.sql`
-  (the next free number after `0067_add_versioned_beads_schema`). Leave the SQL as the
+  `0050_dependencies_deterministic_id`. Rename to `0069_create_attachments.*.sql`
+  (the next free number after `0068_add_attribution_status`). Leave the SQL as the
   PR wrote it; Task A5 changes it before anything is merged.
 - `internal/storage/storage.go`, `iter_stubs.go`, `counts.go`, `hook_decorator.go`:
   take upstream's version, then re-add the PR's attachment methods.
@@ -274,7 +274,7 @@ this task, before anything of ours goes on top.
 ```bash
 git commit -m "feat(attachment): bd attachment verbs from upstream PR 4316
 
-Rebased onto upstream main; migration renumbered to 0068.
+Rebased onto upstream main; migration renumbered to 0069.
 
 Co-authored-by: MovGP0 <MovGP0@users.noreply.github.com>
 Refs: bd-t8j5.1"
@@ -647,10 +647,10 @@ git commit -m "feat(attachment): S3-compatible blob store backend
 Refs: bd-t8j5.3"
 ```
 
-### Task A5: migration 0068 stores a blob key, not a path
+### Task A5: migration 0069 stores a blob key, not a path
 
 **Files:**
-- Modify: `internal/storage/schema/migrations/0068_create_attachments.up.sql` and `.down.sql`
+- Modify: `internal/storage/schema/migrations/0069_create_attachments.up.sql` and `.down.sql`
 - Modify: `internal/types/types.go` (`Attachment.StorageRelPath` becomes `BlobKey`)
 - Modify: `internal/storage/issueops/attachments.go`, `internal/storage/dolt/attachments.go`,
   `internal/storage/embeddeddolt/attachments.go` (column name)
