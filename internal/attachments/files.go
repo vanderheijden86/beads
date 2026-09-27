@@ -42,7 +42,7 @@ type StoredFile struct {
 
 // BeadsDir returns the .beads root for a store.
 func BeadsDir(st any) (string, error) {
-	loc, ok := st.(storage.StoreLocator)
+	loc, ok := storeLocator(st)
 	if !ok {
 		return "", fmt.Errorf("store does not expose filesystem location")
 	}
@@ -68,6 +68,18 @@ func BeadsDir(st any) (string, error) {
 	}
 
 	return "", fmt.Errorf("cannot derive .beads directory from store path %q", path)
+}
+
+// storeLocator finds the store's StoreLocator, peeling decorators (hook
+// firing, telemetry, etc.) first so the assertion reaches the concrete
+// dolt/embeddeddolt store rather than a wrapper that only forwards
+// DoltStorage methods.
+func storeLocator(st any) (storage.StoreLocator, bool) {
+	if ds, ok := st.(storage.DoltStorage); ok {
+		st = storage.UnwrapStore(ds)
+	}
+	loc, ok := st.(storage.StoreLocator)
+	return loc, ok
 }
 
 // Root returns the directory that stores attachment bytes for the store.
@@ -208,21 +220,83 @@ func DetectMimeType(filename string, sample []byte) string {
 }
 
 // StoredPath resolves attachment metadata's storage_relpath safely under
-// the store's .beads directory.
+// the store's attachment root. storage_relpath is untrusted: it can arrive
+// through a Dolt pull from another party, so both the syntactic path and
+// the filesystem path it resolves to (following any symlink components)
+// must stay confined to Root(st), not merely to .beads as a whole — a
+// relpath of "metadata.json" or "../dolt/some-file" is syntactically
+// beneath .beads but must not be reachable through an attachment command.
 func StoredPath(st any, relPath string) (string, error) {
 	beadsDir, err := BeadsDir(st)
 	if err != nil {
 		return "", err
 	}
+	root := filepath.Join(beadsDir, DirName)
 	clean, err := cleanRelPath(relPath)
 	if err != nil {
 		return "", err
 	}
 	abs := filepath.Join(beadsDir, clean)
-	if err := ensureWithin(beadsDir, abs); err != nil {
+	if err := ensureWithin(root, abs); err != nil {
 		return "", err
 	}
+	return resolveWithinRoot(root, abs)
+}
+
+// resolveWithinRoot rejects abs if a symlink anywhere along its existing
+// components resolves outside root. A syntactic prefix match on abs is not
+// enough: a symlinked directory placed under root (for example by restoring
+// attachment bytes from an untrusted backup) can point outside it while
+// still satisfying filepath.Rel against the unresolved path.
+func resolveWithinRoot(root, abs string) (string, error) {
+	realRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// Nothing has been stored under root yet, so there is no
+			// symlink an attacker could have planted there.
+			return abs, nil
+		}
+		return "", fmt.Errorf("resolve attachment root: %w", err)
+	}
+	resolved, err := evalExistingPrefix(abs)
+	if err != nil {
+		return "", fmt.Errorf("resolve attachment path: %w", err)
+	}
+	if err := ensureWithin(realRoot, resolved); err != nil {
+		return "", fmt.Errorf("attachment path escapes attachment root: %w", err)
+	}
 	return abs, nil
+}
+
+// evalExistingPrefix resolves symlinks along the longest existing ancestor
+// of path and rejoins the remaining, not-yet-created suffix unresolved, so
+// a path that does not exist yet (a new attachment about to be written) can
+// still be checked for an escaping symlink in one of its parent directories.
+func evalExistingPrefix(path string) (string, error) {
+	remainder := ""
+	current := filepath.Clean(path)
+	for {
+		resolved, err := filepath.EvalSymlinks(current)
+		if err == nil {
+			if remainder == "" {
+				return resolved, nil
+			}
+			return filepath.Join(resolved, remainder), nil
+		}
+		if !os.IsNotExist(err) {
+			return "", err
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return path, nil
+		}
+		if remainder == "" {
+			remainder = filepath.Base(current)
+		} else {
+			remainder = filepath.Join(filepath.Base(current), remainder)
+		}
+		current = parent
+	}
 }
 
 // Exists reports whether the attachment bytes referenced by metadata exist.

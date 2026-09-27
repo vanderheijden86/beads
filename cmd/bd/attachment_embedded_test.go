@@ -145,3 +145,94 @@ func TestEmbeddedAttachmentCommands(t *testing.T) {
 		t.Fatalf("final listed attachments = %+v, want empty", listed)
 	}
 }
+
+// TestEmbeddedAttachmentAddDuplicateReturnsFriendlyError covers re-attaching
+// the same file to the same issue: the metadata insert hits
+// uniq_attachments_issue_hash, and the CLI must surface which attachment
+// already holds that content rather than a raw MySQL 1062 error.
+func TestEmbeddedAttachmentAddDuplicateReturnsFriendlyError(t *testing.T) {
+	if os.Getenv("BEADS_TEST_EMBEDDED_DOLT") != "1" {
+		t.Skip("set BEADS_TEST_EMBEDDED_DOLT=1 to run embedded dolt integration tests")
+	}
+
+	bd := buildEmbeddedBD(t)
+	dir, _, _ := bdInit(t, bd, "--prefix", "att")
+	issue := bdCreate(t, bd, dir, "Duplicate attachment issue", "--type", "task")
+
+	source := filepath.Join(dir, "body.md")
+	if err := os.WriteFile(source, []byte("# Attachment\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	addOut := bdAttachment(t, bd, dir, "add", issue.ID, source, "--json")
+	var added attachmentListItem
+	if err := json.Unmarshal([]byte(addOut), &added); err != nil {
+		t.Fatalf("parse attachment add JSON: %v\n%s", err, addOut)
+	}
+
+	failOut := bdAttachmentFail(t, bd, dir, "add", issue.ID, source)
+	if !strings.Contains(failOut, "already attached as "+added.ID) {
+		t.Fatalf("duplicate add output = %q, want it to name %s", failOut, added.ID)
+	}
+	if strings.Contains(failOut, "1062") || strings.Contains(failOut, "Duplicate entry") {
+		t.Fatalf("duplicate add output leaked a raw UNIQUE-key error: %q", failOut)
+	}
+}
+
+// TestEmbeddedAttachmentRemoveWarnsOnFileRemovalFailure covers the case
+// where the metadata delete succeeds but the stored file cannot be removed
+// (permission denied on its directory here). The command must still report
+// success and drop the metadata row, rather than leaving a dangling
+// attachment record because the disk cleanup failed.
+func TestEmbeddedAttachmentRemoveWarnsOnFileRemovalFailure(t *testing.T) {
+	if os.Getenv("BEADS_TEST_EMBEDDED_DOLT") != "1" {
+		t.Skip("set BEADS_TEST_EMBEDDED_DOLT=1 to run embedded dolt integration tests")
+	}
+
+	bd := buildEmbeddedBD(t)
+	dir, beadsDir, _ := bdInit(t, bd, "--prefix", "att")
+	issue := bdCreate(t, bd, dir, "Undeletable attachment issue", "--type", "task")
+
+	source := filepath.Join(dir, "body.md")
+	if err := os.WriteFile(source, []byte("# Attachment\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	addOut := bdAttachment(t, bd, dir, "add", issue.ID, source, "--json")
+	var added attachmentListItem
+	if err := json.Unmarshal([]byte(addOut), &added); err != nil {
+		t.Fatalf("parse attachment add JSON: %v\n%s", err, addOut)
+	}
+
+	issueAttachmentDir := filepath.Join(beadsDir, "attachments", issue.ID)
+	if err := os.Chmod(issueAttachmentDir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(issueAttachmentDir, 0o755) })
+
+	removeOut := bdAttachment(t, bd, dir, "remove", issue.ID, added.ContentHash, "--json")
+	var removed map[string]interface{}
+	if err := json.Unmarshal([]byte(removeOut), &removed); err != nil {
+		t.Fatalf("parse attachment remove JSON: %v\n%s", err, removeOut)
+	}
+	if removed["status"] != "removed" {
+		t.Fatalf("remove status = %v, want removed despite the stray file", removed["status"])
+	}
+	if removed["file_removed"] != false {
+		t.Fatalf("file_removed = %v, want false", removed["file_removed"])
+	}
+	if removed["file_remove_error"] == nil || removed["file_remove_error"] == "" {
+		t.Fatalf("file_remove_error missing from %+v", removed)
+	}
+
+	if err := os.Chmod(issueAttachmentDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	listOut := bdAttachment(t, bd, dir, "list", issue.ID, "--json")
+	var listed []attachmentListItem
+	if err := json.Unmarshal([]byte(listOut), &listed); err != nil {
+		t.Fatalf("parse attachment list JSON: %v\n%s", err, listOut)
+	}
+	if len(listed) != 0 {
+		t.Fatalf("listed attachments after removal = %+v, want empty despite stray file", listed)
+	}
+}

@@ -62,6 +62,12 @@ var ErrCommitIndeterminate = errors.New("write commit result indeterminate")
 // attachment on the issue.
 var ErrAmbiguous = errors.New("ambiguous selector")
 
+// ErrAttachmentAlreadyExists is returned when a file is attached to an issue
+// that already holds an attachment with the same content hash. It is its own
+// sentinel rather than ErrAlreadyExists, whose message is specific to the
+// issue/wisp id space and would misdescribe a duplicate attachment.
+var ErrAttachmentAlreadyExists = errors.New("attachment already exists")
+
 // ClaimedByFragment and NotClaimableStatusFragment are the exact message
 // fragments a claim refusal puts after the sentinel to carry the conflicting
 // assignee/status: ErrAlreadyClaimed reads "<sentinel> by <assignee>" and

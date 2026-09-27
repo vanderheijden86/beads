@@ -336,6 +336,7 @@
           "reference/troubleshooting",
           "reference/antivirus",
           "reference/faq",
+          "ATTACHMENTS",
           {
             "group": "CLI Reference",
             "pages": [

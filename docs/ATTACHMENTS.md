@@ -1,4 +1,7 @@
-# Attachment Storage Policy
+---
+title: Attachment Storage Policy
+description: What syncs and what stays local for issue file attachments, and how to back up attachment bytes
+---
 
 Attachment support uses a split storage model:
 

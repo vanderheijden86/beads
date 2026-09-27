@@ -273,10 +273,19 @@ var attachmentRemoveCmd = &cobra.Command{
 			return HandleErrorRespectJSON("removing attachment metadata: %v", err)
 		}
 		commandDidWrite.Store(true)
+
+		// RemoveAttachment above already committed the metadata delete (the
+		// server store stages and commits inside the call; the embedded store
+		// commits its own sql transaction), so a failure to remove the
+		// now-unreferenced file is a stray file, not a half-applied metadata
+		// change. Treat it as a warning: still run the version-control commit
+		// below, since skipping it would leave this change uncommitted for
+		// the working set and misattribute it to whichever command runs
+		// next. `bd attachment fsck`/`prune` already exist to reclaim an
+		// orphaned file.
+		var fileRemoveErr error
 		if !referencedByOther {
-			if err := attachfs.RemoveStoredFile(result.Store, attachment); err != nil {
-				return HandleErrorRespectJSON("removing attachment file: %v", err)
-			}
+			fileRemoveErr = attachfs.RemoveStoredFile(result.Store, attachment)
 		}
 		if err := commitPendingIfEmbedded(ctx, result.Store, actor, doltAutoCommitParams{
 			Command:  "attachment remove",
@@ -286,18 +295,27 @@ var attachmentRemoveCmd = &cobra.Command{
 		}
 
 		SetLastTouchedID(result.ResolvedID)
+		fileRemoved := !referencedByOther && fileRemoveErr == nil
 		if jsonOutput {
-			return outputJSON(map[string]interface{}{
+			payload := map[string]interface{}{
 				"status":        "removed",
 				"issue_id":      result.ResolvedID,
 				"attachment_id": attachment.ID,
-				"file_removed":  !referencedByOther,
-			})
+				"file_removed":  fileRemoved,
+			}
+			if fileRemoveErr != nil {
+				payload["file_remove_error"] = fileRemoveErr.Error()
+			}
+			return outputJSON(payload)
 		}
 		fmt.Printf("%s Removed %s from %s\n",
 			ui.RenderPass("✓"),
 			attachment.OriginalFilename,
 			formatFeedbackID(result.ResolvedID, result.Issue.Title))
+		if fileRemoveErr != nil {
+			fmt.Fprintf(os.Stderr, "%s could not remove the stored file: %v (run `bd attachment prune` to reclaim it later)\n",
+				ui.RenderWarn("⚠"), fileRemoveErr)
+		}
 		return nil
 	},
 }

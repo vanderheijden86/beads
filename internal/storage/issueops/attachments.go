@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/steveyegge/beads/internal/storage"
+	"github.com/steveyegge/beads/internal/storage/dberrors"
 	"github.com/steveyegge/beads/internal/types"
 )
 
@@ -51,10 +52,29 @@ func AddAttachmentInTx(ctx context.Context, tx *sql.Tx, attachment *types.Attach
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, result.ID, result.IssueID, result.HashAlgorithm, result.ContentHash, result.OriginalFilename,
 		result.MimeType, result.ByteSize, result.StorageRelPath, result.CreatedBy, result.CreatedAt); err != nil {
+		if dberrors.IsDuplicateKey(err) {
+			return nil, duplicateAttachmentError(ctx, tx, result.IssueID, result.HashAlgorithm, result.ContentHash)
+		}
 		return nil, fmt.Errorf("add attachment metadata: %w", err)
 	}
 
 	return &result, nil
+}
+
+// duplicateAttachmentError turns the raw uniqueness violation on
+// (issue_id, hash_algorithm, content_hash) into a message naming the
+// attachment that already occupies that slot, rather than a UNIQUE-key
+// error the caller has to decode. The lookup query mirrors the same
+// key the insert just violated, so it should always find the row.
+func duplicateAttachmentError(ctx context.Context, tx *sql.Tx, issueID, hashAlgorithm, contentHash string) error {
+	var existingID string
+	err := tx.QueryRowContext(ctx,
+		`SELECT id FROM attachments WHERE issue_id = ? AND hash_algorithm = ? AND content_hash = ?`,
+		issueID, hashAlgorithm, contentHash).Scan(&existingID)
+	if err != nil || existingID == "" {
+		return fmt.Errorf("%w: already attached to %s", storage.ErrAttachmentAlreadyExists, issueID)
+	}
+	return fmt.Errorf("%w: already attached as %s", storage.ErrAttachmentAlreadyExists, existingID)
 }
 
 // ListAttachmentsInTx lists attachment metadata for an issue.

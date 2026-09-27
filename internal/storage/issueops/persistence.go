@@ -164,14 +164,20 @@ func persistenceIssueTable(wisp bool) string {
 	return "issues"
 }
 
+// rejectPersistenceDemotion refuses to move an issue onto the wisp plane
+// while it still owns rows in a table that has no wisp-plane counterpart.
+// copyPersistenceAuxiliary only knows how to carry over persistenceAuxTables,
+// so anything else — snapshots, or an attachment's metadata row and the bytes
+// it names on disk — would be silently dropped by the DELETE FROM issues the
+// demotion issues, rather than moved.
 func rejectPersistenceDemotion(ctx context.Context, tx DBTX, id string) error {
-	for _, table := range []string{"issue_snapshots", "compaction_snapshots"} {
+	for _, table := range []string{"issue_snapshots", "compaction_snapshots", "attachments"} {
 		var count int
 		if err := tx.QueryRowContext(ctx, fmt.Sprintf(`SELECT COUNT(*) FROM %s WHERE issue_id = ?`, table), id).Scan(&count); err != nil {
 			return fmt.Errorf("check retained snapshots in %s: %w", table, err)
 		}
 		if count > 0 {
-			return fmt.Errorf("cannot demote issue %s with retained snapshots", id)
+			return fmt.Errorf("cannot demote issue %s: it has retained snapshots or attachments", id)
 		}
 	}
 	return nil

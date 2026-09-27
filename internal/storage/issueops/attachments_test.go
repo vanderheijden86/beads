@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/go-sql-driver/mysql"
 
 	"github.com/steveyegge/beads/internal/storage"
 	"github.com/steveyegge/beads/internal/types"
@@ -93,6 +95,64 @@ func TestAddAttachmentInTxMissingIssue(t *testing.T) {
 	_, err = AddAttachmentInTx(ctx, tx, &types.Attachment{IssueID: "bd-missing"})
 	if !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("AddAttachmentInTx error = %v, want ErrNotFound", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
+// TestAddAttachmentInTxDuplicateReturnsFriendlyError covers re-attaching the
+// same file to the same issue: the insert hits
+// uniq_attachments_issue_hash, and the caller should see which attachment
+// already holds that content rather than a raw MySQL 1062 error.
+func TestAddAttachmentInTxDuplicateReturnsFriendlyError(t *testing.T) {
+	ctx := context.Background()
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New: %v", err)
+	}
+	defer db.Close()
+
+	mock.ExpectBegin()
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("BeginTx: %v", err)
+	}
+	defer tx.Rollback()
+
+	attachment := &types.Attachment{
+		IssueID:          "bd-abc",
+		HashAlgorithm:    "sha256",
+		ContentHash:      "abc123",
+		OriginalFilename: "body.md",
+		MimeType:         "text/markdown",
+		ByteSize:         1234,
+		StorageRelPath:   "attachments/bd-abc/abc123",
+		CreatedBy:        "tester",
+	}
+
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT EXISTS(SELECT 1 FROM issues WHERE id = ?)`)).
+		WithArgs("bd-abc").
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+	mock.ExpectExec(regexp.QuoteMeta(`
+		INSERT INTO attachments (
+			id, issue_id, hash_algorithm, content_hash, original_filename,
+			mime_type, byte_size, storage_relpath, created_by, created_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`)).
+		WithArgs(sqlmock.AnyArg(), "bd-abc", "sha256", "abc123", "body.md", "text/markdown", int64(1234), "attachments/bd-abc/abc123", "tester", sqlmock.AnyArg()).
+		WillReturnError(&mysql.MySQLError{Number: 1062, Message: "Duplicate entry 'bd-abc-sha256-abc123' for key 'uniq_attachments_issue_hash'"})
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id FROM attachments WHERE issue_id = ? AND hash_algorithm = ? AND content_hash = ?`)).
+		WithArgs("bd-abc", "sha256", "abc123").
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow("att-existing"))
+
+	_, err = AddAttachmentInTx(ctx, tx, attachment)
+	if !errors.Is(err, storage.ErrAttachmentAlreadyExists) {
+		t.Fatalf("AddAttachmentInTx error = %v, want ErrAttachmentAlreadyExists", err)
+	}
+	if !strings.Contains(err.Error(), "already attached as att-existing") {
+		t.Fatalf("AddAttachmentInTx error = %q, want it to name att-existing", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("unmet expectations: %v", err)

@@ -248,5 +248,6 @@ func DeleteCascadeTables(isWisp bool) []string {
 		// issues(id) ON DELETE CASCADE, so deleting an ordinary issue also
 		// drops the wisp edges that depended on it.
 		"wisp_dependencies",
+		"attachments",
 	}
 }
