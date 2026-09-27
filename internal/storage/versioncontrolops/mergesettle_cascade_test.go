@@ -14,16 +14,23 @@ import (
 // TestFKCascadeRepairDeletesCoversSchema does not fail on them.
 var fkCascadeRepairExemptions = map[string]string{
 	// provenance_events cascades from issues (migration 0063) but was never
-	// added to fkCascadeRepairDeletes. Known upstream gap, not introduced by
-	// this fix and not fixed here.
-	"provenance_events": "upstream gap: no fkCascadeRepairDeletes entry",
+	// added to fkCascadeRepairDeletes. Known upstream gap tracked as bd-ossx,
+	// not introduced by this fix and not fixed here.
+	"provenance_events": "bd-ossx: upstream gap: merge cleanup map lacks provenance_events",
 }
 
 // cascadeFKPattern matches an ON DELETE CASCADE foreign key that points at
-// refTable, in the quoted ALTER TABLE form some migrations use.
+// refTable, in the ALTER TABLE ADD [CONSTRAINT name] FOREIGN KEY form some
+// migrations use. Backticks around the table, constraint, and reference names
+// are optional since both quoting styles appear across the migrations. The
+// [^;]*? gaps stay within one statement: an unbounded gap here would let one
+// ALTER's "ADD CONSTRAINT" pair with a later, unrelated ALTER's "REFERENCES",
+// recording the first statement's table and silently missing the second's.
 func cascadeFKPattern(refTable string) *regexp.Regexp {
 	return regexp.MustCompile(fmt.Sprintf(
-		`(?is)ALTER\s+TABLE\s+([A-Za-z_][A-Za-z0-9_]*)\s+ADD\s+CONSTRAINT.*?REFERENCES\s+%s\s*\(\s*id\s*\).*?ON\s+DELETE\s+CASCADE`,
+		"(?is)ALTER\\s+TABLE\\s+`?([A-Za-z_][A-Za-z0-9_]*)`?\\s+ADD\\s+"+
+			"(?:CONSTRAINT\\s+`?[A-Za-z_][A-Za-z0-9_]*`?\\s+)?FOREIGN\\s+KEY"+
+			"[^;]*?REFERENCES\\s+`?%s`?\\s*\\(\\s*`?id`?\\s*\\)[^;]*?ON\\s+DELETE\\s+CASCADE",
 		refTable))
 }
 
@@ -33,6 +40,61 @@ func createCascadePattern(refTable string) *regexp.Regexp {
 	return regexp.MustCompile(fmt.Sprintf(
 		`(?is)CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?`+"`?"+`([A-Za-z_][A-Za-z0-9_]*)`+"`?"+`\s*\((?:[^;]*?)REFERENCES\s+%s\s*\(\s*id\s*\)\s*ON\s+DELETE\s+CASCADE`,
 		refTable))
+}
+
+// TestCascadeFKPatternMatchesAllConstraintForms pins cascadeFKPattern against
+// synthetic snippets for the constraint forms the real migrations use plus
+// the two forms it once missed: a backticked identifier, and ADD FOREIGN KEY
+// with no ADD CONSTRAINT clause. The cross-statement case guards the [^;]*?
+// bound: an unbounded gap would let the first ALTER's "ADD CONSTRAINT" pair
+// with the second ALTER's "REFERENCES issues", capturing the wrong table.
+func TestCascadeFKPatternMatchesAllConstraintForms(t *testing.T) {
+	tests := []struct {
+		name string
+		sql  string
+		want string // captured table name; "" means no match is expected
+	}{
+		{
+			name: "plain ADD CONSTRAINT ... FOREIGN KEY",
+			sql:  "ALTER TABLE foo ADD CONSTRAINT fk_foo FOREIGN KEY (bar_id) REFERENCES issues(id) ON DELETE CASCADE ON UPDATE CASCADE;",
+			want: "foo",
+		},
+		{
+			name: "backticked table, constraint, and reference identifiers",
+			sql:  "ALTER TABLE `foo` ADD CONSTRAINT `fk_foo` FOREIGN KEY (`bar_id`) REFERENCES `issues`(`id`) ON DELETE CASCADE;",
+			want: "foo",
+		},
+		{
+			name: "ADD FOREIGN KEY with no ADD CONSTRAINT clause",
+			sql:  "ALTER TABLE foo ADD FOREIGN KEY (bar_id) REFERENCES issues(id) ON DELETE CASCADE;",
+			want: "foo",
+		},
+		{
+			name: "does not bleed a match across two ALTER statements",
+			sql: "ALTER TABLE foo ADD CONSTRAINT fk_foo FOREIGN KEY (bar_id) REFERENCES wisps(id) ON DELETE CASCADE;\n" +
+				"ALTER TABLE bar ADD CONSTRAINT fk_bar FOREIGN KEY (baz_id) REFERENCES issues(id) ON DELETE CASCADE;",
+			want: "bar",
+		},
+	}
+
+	pat := cascadeFKPattern("issues")
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			m := pat.FindStringSubmatch(tc.sql)
+			if tc.want == "" {
+				if m != nil {
+					t.Fatalf("cascadeFKPattern matched %q, want no match", m[0])
+				}
+				return
+			}
+			if m == nil {
+				t.Fatalf("cascadeFKPattern found no match in %q", tc.sql)
+			}
+			if m[1] != tc.want {
+				t.Fatalf("cascadeFKPattern captured table %q, want %q", m[1], tc.want)
+			}
+		})
+	}
 }
 
 // migrationCascadeTargets derives, from the shipped migrations, every table
